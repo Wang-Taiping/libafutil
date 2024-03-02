@@ -31,7 +31,7 @@ namespace afutil
 		{
 			return afutil_opt_proc(hoptman, rules);
 		}
-		const char* result(int index)
+		const char* result(int32_t index)
 		{
 			return afutil_opt_result(hoptman, index);
 		}
@@ -58,7 +58,7 @@ namespace afutil
 		{
 			return afutil_wopt_proc(hoptman, rules);
 		}
-		const wchar_t* result(int index)
+		const wchar_t* result(int32_t index)
 		{
 			return afutil_wopt_result(hoptman, index);
 		}

@@ -37,13 +37,13 @@ extern "C" {
 	void afutil_opt_destroy(afutil_optman opt_handle);
 	afutil_bool afutil_opt_bind(afutil_optman opt_handle, int argc, char* argv[]);
 	int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules);
-	const char* afutil_opt_result(afutil_optman opt_handle, uint32_t index);
+	const char* afutil_opt_result(afutil_optman opt_handle, int32_t index);
 
 	afutil_woptman afutil_wopt_create();
 	void afutil_wopt_destroy(afutil_woptman opt_handle);
 	afutil_bool afutil_wopt_bind(afutil_woptman opt_handle, int argc, wchar_t* argv[]);
 	int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules);
-	const wchar_t* afutil_wopt_result(afutil_woptman opt_handle, uint32_t index);
+	const wchar_t* afutil_wopt_result(afutil_woptman opt_handle, int32_t index);
 #ifdef __cplusplus
 }
 #endif // __cplusplus
