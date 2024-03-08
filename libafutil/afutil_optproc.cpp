@@ -83,7 +83,7 @@ int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules)
 {
 	if (opt_handle == nullptr || rules == nullptr) return 0;
 	afutil_opt_native handle = afutil_opt_native(opt_handle);
-	if (handle->optid >= handle->argc) return AFUTIL_OPT_OVERFLOW;
+	if (handle->optid >= handle->argc) return AFUTIL_OVERFLOW;
 	std::regex normal("^-{1,2}(\\w|-)+");
 	std::regex optional("^-{1,2}(\\w|=|-)+");
 	std::string temp;
@@ -112,7 +112,7 @@ int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules)
 				if (handle->list->size() < rules[i].arg_number)
 				{
 					handle->list->clear();
-					return AFUTIL_OPT_NEXIST;
+					return AFUTIL_NOT_EXIST;
 				}
 			}
 			return rules[i].ret_number;
@@ -120,7 +120,7 @@ int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules)
 		if (!finded)
 		{
 			handle->optid++;
-			return AFUTIL_OPT_NEXIST;
+			return AFUTIL_NOT_EXIST;
 		}
 	}
 	else if (std::regex_match(handle->argv[handle->optid], optional))
@@ -128,7 +128,7 @@ int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules)
 		temp = keyname(handle->argv[handle->optid]);
 		while (rules[i].name != nullptr)
 		{
-			if (rules[i].arg_number != AFUTIL_OPT_OPT_ARG || temp != rules[i].name)
+			if (rules[i].arg_number != AFUTIL_OPTIONAL || temp != rules[i].name)
 			{
 				i++;
 				continue;
@@ -138,18 +138,18 @@ int afutil_opt_proc(afutil_optman opt_handle, afutil_optrule* rules)
 			handle->optid++;
 			return rules[i].ret_number;
 		}
-		if (!finded) return AFUTIL_OPT_NEXIST;
+		if (!finded) return AFUTIL_NOT_EXIST;
 	}
 	else
 	{
 		handle->list->push_back(handle->argv[handle->optid]);
 		handle->optid++;
-		return AFUTIL_OPT_NORMAL;
+		return AFUTIL_NORMAL;
 	}
-	return AFUTIL_OPT_OVERFLOW;
+	return AFUTIL_OVERFLOW;
 }
 
-const char* afutil_opt_result(afutil_optman opt_handle, uint32_t index)
+const char* afutil_opt_result(afutil_optman opt_handle, int32_t index)
 {
 	if (opt_handle == nullptr) return nullptr;
 	afutil_opt_native handle = afutil_opt_native(opt_handle);
@@ -197,7 +197,7 @@ int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules)
 {
 	if (opt_handle == nullptr || rules == nullptr) return 0;
 	afutil_wopt_native handle = afutil_wopt_native(opt_handle);
-	if (handle->optid >= handle->argc) return AFUTIL_OPT_OVERFLOW;
+	if (handle->optid >= handle->argc) return AFUTIL_OVERFLOW;
 	std::wregex normal(L"^-{1,2}(\\w|-)+");
 	std::wregex optional(L"^-{1,2}(\\w|=|-)+");
 	std::wstring temp;
@@ -226,7 +226,7 @@ int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules)
 				if (handle->list->size() < rules[i].arg_number)
 				{
 					handle->list->clear();
-					return AFUTIL_OPT_NEXIST;
+					return AFUTIL_NOT_EXIST;
 				}
 			}
 			return rules[i].ret_number;
@@ -234,7 +234,7 @@ int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules)
 		if (!finded)
 		{
 			handle->optid++;
-			return AFUTIL_OPT_NEXIST;
+			return AFUTIL_NOT_EXIST;
 		}
 	}
 	else if (std::regex_match(handle->argv[handle->optid], optional))
@@ -242,7 +242,7 @@ int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules)
 		temp = wkeyname(handle->argv[handle->optid]);
 		while (rules[i].name != nullptr)
 		{
-			if (rules[i].arg_number != AFUTIL_OPT_OPT_ARG || temp != rules[i].name)
+			if (rules[i].arg_number != AFUTIL_OPTIONAL || temp != rules[i].name)
 			{
 				i++;
 				continue;
@@ -252,18 +252,18 @@ int afutil_wopt_proc(afutil_woptman opt_handle, afutil_woptrule* rules)
 			handle->optid++;
 			return rules[i].ret_number;
 		}
-		if (!finded) return AFUTIL_OPT_NEXIST;
+		if (!finded) return AFUTIL_NOT_EXIST;
 	}
 	else
 	{
 		handle->list->push_back(handle->argv[handle->optid]);
 		handle->optid++;
-		return AFUTIL_OPT_NORMAL;
+		return AFUTIL_NORMAL;
 	}
-	return AFUTIL_OPT_OVERFLOW;
+	return AFUTIL_OVERFLOW;
 }
 
-const wchar_t* afutil_wopt_result(afutil_woptman opt_handle, uint32_t index)
+const wchar_t* afutil_wopt_result(afutil_woptman opt_handle, int32_t index)
 {
 	if (opt_handle == nullptr) return nullptr;
 	afutil_wopt_native handle = afutil_wopt_native(opt_handle);

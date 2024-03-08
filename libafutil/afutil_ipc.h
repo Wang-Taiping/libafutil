@@ -12,7 +12,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
-	TYPENAME(afutil_pipe);
+	HANDLENAME(afutil_pipe);
 
 	AFUTIL_EXPORT afutil_bool afutil_pipe_exists_multibyte(const char* pipe_name, uint32_t milliseconds);
 	AFUTIL_EXPORT afutil_bool afutil_pipe_exists_wide(const wchar_t* pipe_name, uint32_t milliseconds);

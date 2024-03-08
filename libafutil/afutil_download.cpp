@@ -4,8 +4,20 @@
 #include "afutil_string.h"
 #include <string>
 #include <curl/curl.h>
+#include <winhttp.h>
 
-constexpr auto DEFAULT_BUFFER_SIZE = (4 * 1024 * 1024);
+#define DEFAULT_BUFFER_SIZE		8388608
+
+static BOOL GetWinetProxy(LPSTR lpszProxy, UINT nProxyLen)
+{
+	WINHTTP_CURRENT_USER_IE_PROXY_CONFIG ProxyConfig = { 0 };
+	WinHttpGetIEProxyConfigForCurrentUser(&ProxyConfig);
+	if (ProxyConfig.lpszProxy && nProxyLen > wcslen(ProxyConfig.lpszProxy)) {
+		afutil_convert_string_to_utf8(ProxyConfig.lpszProxy, lpszProxy, nProxyLen);
+		return TRUE;
+	}
+	return FALSE;
+}
 
 struct afutil_dlstruct
 {
@@ -74,6 +86,13 @@ static int download(const char* url, afutil_dlstruct* dlstruct)
 	curl_easy_setopt(dlstruct->curl, CURLOPT_FAILONERROR, 1L);
 	curl_easy_setopt(dlstruct->curl, CURLOPT_WRITEDATA, dlstruct);
 	curl_easy_setopt(dlstruct->curl, CURLOPT_WRITEFUNCTION, writedata);
+	char Proxy[256] = { 0 };
+	if (GetWinetProxy(Proxy, 256)) {
+		//printf("%s\n", Proxy);
+		curl_easy_setopt(dlstruct->curl, CURLOPT_PROXY, Proxy);
+		curl_easy_setopt(dlstruct->curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+		//curl_easy_setopt(dlstruct->curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+	}
 	CURLcode code = curl_easy_perform(dlstruct->curl);
 	curl_easy_cleanup(dlstruct->curl);
 	return code == CURLE_OK;

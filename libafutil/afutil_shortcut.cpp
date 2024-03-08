@@ -29,12 +29,17 @@ afutil_bool afutil_shortcut_create_wide(const wchar_t* source_file, const wchar_
 	int nReturn = 1;
 	IShellLink* pIShellLink = nullptr;
 	IPersistFile* pIPersistFile = nullptr;
+	bool COMInit = false;
 	try
 	{
-		HRESULT hr = ::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-			IID_IShellLink, (void**)&pIShellLink);
-		if (!SUCCEEDED(hr))
-			throw "create shell_link object fail.";
+		HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)&pIShellLink);
+		if (!SUCCEEDED(hr)) {
+			//throw "create shell_link object fail.";
+			CoInitialize(nullptr);
+			COMInit = true;
+			hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, (void**)&pIShellLink);
+			if (!SUCCEEDED(hr)) throw "create shell_link object and retry fail.";
+		}
 		hr = pIShellLink->SetPath(source_file);
 		if (!SUCCEEDED(hr))
 			throw "set target fail";
@@ -64,6 +69,7 @@ afutil_bool afutil_shortcut_create_wide(const wchar_t* source_file, const wchar_
 			throw "save fail.";
 	}
 	catch (...) { nReturn = 0; }
+	if (COMInit) CoUninitialize();
 	if (pIPersistFile) pIPersistFile->Release();
 	if (pIShellLink) pIShellLink->Release();
 	return nReturn;

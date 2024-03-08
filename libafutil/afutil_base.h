@@ -11,7 +11,7 @@
 #define AFUTIL_EXPORT	__declspec(dllimport)
 #endif // AFUTIL_BUILD
 
-#define TYPENAME(name)	struct __##name { int unused; }; typedef __##name *name;
+#define HANDLENAME(name)	struct __##name { int unused; }; typedef __##name *name;
 
 typedef void* afutil_handle;
 typedef char afutil_bool;
