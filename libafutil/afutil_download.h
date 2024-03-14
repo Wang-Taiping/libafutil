@@ -4,18 +4,73 @@
 #define AFUTIL_DOWNLOAD_H
 
 #include "afutil_base.h"
+#include "afutil_timer.h"
+#include <stdio.h>
+
+#define AFUTIL_DOWNLOAD_URL_DEFAULT_LENGTH	(128)
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
-	typedef afutil_bool(*afutil_download_callback_t)(uint64_t total_bytes, uint64_t download_bytes, uint64_t speed_bytes, void* user_data);
+	typedef enum afutil_download_operation
+	{
+		afutil_download_operation_continue,
+		afutil_download_operation_pause,
+		afutil_download_operation_stop
+	} afutil_download_operation;
 
-	AFUTIL_EXPORT afutil_bool afutil_download_file_multibyte(const char* url, const char* path, afutil_download_callback_t callback = nullptr, void* user_data = nullptr);
-	AFUTIL_EXPORT afutil_bool afutil_download_file_wide(const wchar_t* url, const wchar_t* path, afutil_download_callback_t callback = nullptr, void* user_data = nullptr);
-	AFUTIL_EXPORT afutil_bool afutil_download_api_multibyte(const char* url, void* buffer, size_t bufsize, size_t* download_size = nullptr);
-	AFUTIL_EXPORT afutil_bool afutil_download_api_wide(const wchar_t* url, void* buffer, size_t bufsize, size_t* download_size = nullptr);
-	AFUTIL_EXPORT size_t afutil_url_get_filename_multibyte(const char* url, char* buffer, size_t bufsize);
-	AFUTIL_EXPORT size_t afutil_url_get_filename_wide(const wchar_t* url, wchar_t* buffer, size_t bufsize);
+	typedef struct afutil_download_info {
+		uint64_t total;
+		uint64_t downloaded;
+		uint64_t speed;
+		float percentage;
+		struct {
+			uint32_t day;
+			uint8_t hour;
+			uint8_t min;
+			uint8_t sec;
+		} eta;
+	} afutil_download_info;
+
+	typedef struct afutil_download_native_attribute
+	{
+		bool exit;
+		bool fail;
+		bool retry;
+		bool alloc;
+	} afutil_download_native_attribute;
+
+	typedef struct afutil_download_native_handle
+	{
+		void* curl;
+		uint64_t info_last_downloaded;
+		uint64_t cached;
+		uint64_t storaged;
+		uint32_t lsbcount;
+		afutil_timer timer;
+		afutil_download_native_attribute attribute;
+	} afutil_download_native_handle;
+
+	typedef afutil_download_operation(*afutil_download_callback)(const afutil_download_info* info, void* user_data);
+
+	typedef struct afutil_download_metadata {
+		char url[AFUTIL_DOWNLOAD_URL_DEFAULT_LENGTH];
+		char* extended_url;
+		FILE* file;
+		char* buffer;
+		uint64_t buflen;
+		afutil_download_callback callback;
+		void* user_data;
+		afutil_download_info info;
+		afutil_download_native_handle native; // do not change!!!
+	} afutil_download_metadata;
+
+	AFUTIL_EXPORT afutil_bool afutil_download_init();
+	AFUTIL_EXPORT afutil_bool afutil_download_uninit();
+
+	AFUTIL_EXPORT afutil_bool afutil_download(afutil_download_metadata* metadata);
+	AFUTIL_EXPORT afutil_bool afutil_download_file(const char* url, const char* path, afutil_download_callback callback, void* user_data);
+	AFUTIL_EXPORT afutil_bool afutil_download_api(const char* url, void* buffer, uint64_t buflen, uint64_t* downloaded);
 #ifdef __cplusplus
 }
 #endif // __cplusplus

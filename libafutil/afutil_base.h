@@ -16,4 +16,6 @@
 typedef void* afutil_handle;
 typedef char afutil_bool;
 
+typedef void(*afutil_callback_t)(void* user_data);
+
 #endif // !AFUTIL_BASE_H

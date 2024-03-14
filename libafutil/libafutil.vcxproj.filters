@@ -60,11 +60,11 @@
     <ClInclude Include="afutil_shortcut.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="afutil_timer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="afutil_download.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="afutil_ipc.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -83,5 +83,16 @@
     <ClCompile Include="afutil_string.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="afutil_download.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="afutil_timer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="afutil_download.cppx">
+      <Filter>源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -163,15 +163,20 @@
     <ClInclude Include="afutil_shortcut.hpp" />
     <ClInclude Include="afutil_string.h" />
     <ClInclude Include="afutil_string.hpp" />
+    <ClInclude Include="afutil_timer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="afutil_download.cpp" />
+    <None Include="afutil_download.cppx">
+      <FileType>Document</FileType>
+    </None>
     <ClCompile Include="afutil_ipc.cpp" />
     <ClCompile Include="afutil_optproc.cpp" />
     <ClCompile Include="afutil_path.cpp" />
     <ClCompile Include="afutil_resource.cpp" />
     <ClCompile Include="afutil_shortcut.cpp" />
     <ClCompile Include="afutil_string.cpp" />
+    <ClCompile Include="afutil_timer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

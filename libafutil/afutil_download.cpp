@@ -5,178 +5,203 @@
 #include <string>
 #include <curl/curl.h>
 #include <winhttp.h>
+#include <io.h>
 
-#define DEFAULT_BUFFER_SIZE		8388608
+#define DOWNLOAD_BUFFER_SIZE	(10485760)
 
-static BOOL GetWinetProxy(LPSTR lpszProxy, UINT nProxyLen)
+static bool init = false;
+
+static bool afutil_download_native_getproxy(char* buffer, uint32_t buflen)
 {
 	WINHTTP_CURRENT_USER_IE_PROXY_CONFIG ProxyConfig = { 0 };
 	WinHttpGetIEProxyConfigForCurrentUser(&ProxyConfig);
-	if (ProxyConfig.lpszProxy && nProxyLen > wcslen(ProxyConfig.lpszProxy)) {
-		afutil_convert_string_to_utf8(ProxyConfig.lpszProxy, lpszProxy, nProxyLen);
-		return TRUE;
+	if (ProxyConfig.lpszProxy && buflen > wcslen(ProxyConfig.lpszProxy)) {
+		afutil_convert_string_to_utf8(ProxyConfig.lpszProxy, buffer, buflen);
+		return true;
 	}
-	return FALSE;
+	return false;
 }
 
-struct afutil_dlstruct
+afutil_bool afutil_download_init()
 {
-	CURL* curl;
-	afutil_download_callback_t callback;
-	void* user_data;
-	char* buffer;
-	size_t bufsize;
-	size_t bufcache;
-	FILE* file;
-	bool error;
-};
-
-static int progress(afutil_dlstruct* dlstruct, curl_off_t dltotal, curl_off_t dlnow, curl_off_t, curl_off_t)
-{
-	if (dlstruct->error) return -1;
-	if (dlstruct->callback == nullptr) return 0;
-	curl_off_t dlspeed = 0;
-	curl_easy_getinfo(dlstruct->curl, CURLINFO_SPEED_DOWNLOAD_T, &dlspeed);
-	return dlstruct->callback(dltotal, dlnow, dlspeed, dlstruct->user_data) ? 0 : -1;
+	if (init) return 0;
+	init = true;
+	afutil_timer_init();
+	curl_global_init(CURL_GLOBAL_ALL);
+	return 1;
 }
 
-static void flushbuffer(afutil_dlstruct* dlstruct)
+afutil_bool afutil_download_uninit()
 {
-	if (dlstruct->error) return;
-	if (dlstruct->file == nullptr)
+	if (!init) return 0;
+	init = false;
+	afutil_timer_uninit();
+	curl_global_cleanup();
+	return 1;
+}
+
+static int afutil_download_native_progress(afutil_download_metadata* metadata, curl_off_t total, curl_off_t downloaded, curl_off_t, curl_off_t)
+{
+	if (metadata->native.attribute.exit) return -1;
+	metadata->info.total = total;
+	metadata->info.downloaded = downloaded;
+	if (metadata->native.timer.active_signal) {
+		metadata->native.timer.active_signal = false;
+		metadata->info.speed = downloaded - metadata->native.info_last_downloaded;
+		metadata->native.info_last_downloaded = downloaded;
+		uint64_t rest_time = (metadata->info.speed == 0) ? uint64_t(-1) : (total - downloaded) / metadata->info.speed;
+		metadata->info.eta.day = rest_time / 86400u;
+		metadata->info.eta.hour = rest_time % 86400u / 3600u;
+		metadata->info.eta.min = rest_time % 86400u % 3600u / 60u;
+		metadata->info.eta.sec = rest_time % 86400u % 3600u % 60u;
+		if (metadata->info.speed < 8192) {
+			metadata->native.lsbcount++;
+			if (metadata->native.lsbcount >= 10) {
+				metadata->native.lsbcount = 0;
+				metadata->native.attribute.exit = true;
+				metadata->native.attribute.retry = true;
+				return -1;
+			}
+		}
+		else {
+			metadata->native.lsbcount = 0;
+		}
+	}
+	if (metadata->callback == nullptr) return 0;
+	afutil_download_operation operation = metadata->callback(&metadata->info, metadata->user_data);
+	switch (operation)
 	{
-		dlstruct->error = true;
+	case afutil_download_operation_continue:
+		return 0;
+	case afutil_download_operation_pause:
+		break;
+	}
+	metadata->native.attribute.exit = true;
+	metadata->native.attribute.fail = true;
+	return -1;
+}
+
+static void afutil_download_native_flushbuffer(afutil_download_metadata* metadata)
+{
+	if (metadata->native.attribute.exit) return;
+	if (metadata->file == nullptr) {
+		metadata->native.attribute.exit = true;
+		metadata->native.attribute.fail = true;
 		return;
 	}
-	if (dlstruct->bufcache == 0) return;
-	fwrite(dlstruct->buffer, 1, dlstruct->bufcache, dlstruct->file);
-	dlstruct->bufcache = 0;
+	if (metadata->native.cached == 0) return;
+	fwrite(metadata->buffer, 1, metadata->native.cached, metadata->file);
+	metadata->native.storaged += metadata->native.cached;
+	metadata->native.cached = 0;
 }
 
-static size_t writedata(char* buffer, size_t size, size_t nitems, afutil_dlstruct* dlstruct)
+static size_t afutil_download_native_writedata(char* buffer, size_t size, size_t nitems, afutil_download_metadata* metadata)
 {
 	size_t datasize = size * nitems;
-	if (dlstruct->error) return datasize;
-	if (datasize > dlstruct->bufsize)
-	{
-		dlstruct->error = true;
+	if (metadata->native.attribute.exit) {
 		return datasize;
 	}
-	if (dlstruct->bufcache > (dlstruct->bufsize - datasize))
-	{
-		if (dlstruct->file == nullptr)
-		{
-			dlstruct->error = true;
-			return datasize;
-		}
-		else flushbuffer(dlstruct);
+	if (datasize > metadata->buflen) {
+		metadata->native.attribute.exit = true;
+		metadata->native.attribute.fail = true;
+		return datasize;
 	}
-	memcpy(&(dlstruct->buffer[dlstruct->bufcache]), buffer, datasize);
-	dlstruct->bufcache += datasize;
+	if (metadata->native.cached > (metadata->buflen - datasize)) {
+		afutil_download_native_flushbuffer(metadata);
+	}
+	memcpy(&(metadata->buffer[metadata->native.cached]), buffer, datasize);
+	metadata->native.cached += datasize;
 	return datasize;
 }
 
-static int download(const char* url, afutil_dlstruct* dlstruct)
+afutil_bool afutil_download(afutil_download_metadata* metadata)
 {
-	dlstruct->curl = curl_easy_init();
-	curl_easy_setopt(dlstruct->curl, CURLOPT_URL, url);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_NOPROGRESS, 0L);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_XFERINFODATA, dlstruct);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_XFERINFOFUNCTION, progress);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_FAILONERROR, 1L);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_WRITEDATA, dlstruct);
-	curl_easy_setopt(dlstruct->curl, CURLOPT_WRITEFUNCTION, writedata);
-	char Proxy[256] = { 0 };
-	if (GetWinetProxy(Proxy, 256)) {
-		//printf("%s\n", Proxy);
-		curl_easy_setopt(dlstruct->curl, CURLOPT_PROXY, Proxy);
-		curl_easy_setopt(dlstruct->curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+	if (!init) return 0;
+	metadata->native.timer.loops = uint32_t(-1);
+	metadata->native.timer.wait_sec = 1u;
+	afutil_timer_register(&metadata->native.timer);
+	metadata->native.curl = curl_easy_init();
+	if (metadata->extended_url != nullptr) curl_easy_setopt(metadata->native.curl, CURLOPT_URL, metadata->extended_url);
+	else curl_easy_setopt(metadata->native.curl, CURLOPT_URL, metadata->url);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_NOPROGRESS, 0L);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_XFERINFODATA, metadata);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_XFERINFOFUNCTION, afutil_download_native_progress);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_FAILONERROR, 1L);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_WRITEDATA, metadata);
+	curl_easy_setopt(metadata->native.curl, CURLOPT_WRITEFUNCTION, afutil_download_native_writedata);
+	char proxy[64] = { 0 };
+	if (afutil_download_native_getproxy(proxy, 64)) {
+		//printf("%s\n", proxy);
+		curl_easy_setopt(metadata->native.curl, CURLOPT_PROXY, proxy);
+		curl_easy_setopt(metadata->native.curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
 		//curl_easy_setopt(dlstruct->curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
 	}
-	CURLcode code = curl_easy_perform(dlstruct->curl);
-	curl_easy_cleanup(dlstruct->curl);
-	return code == CURLE_OK;
+	int retry_times = 0;
+	char range[64] = { 0 };
+afutil_download_retry:
+	curl_easy_perform(metadata->native.curl);
+	if (metadata->native.attribute.retry && retry_times < 10) {
+		metadata->native.attribute.exit = false;
+		metadata->native.attribute.fail = false;
+		metadata->native.attribute.retry = false;
+		metadata->native.cached = 0;
+		snprintf(range, 64, "%llu-%llu", metadata->native.storaged, metadata->info.total - 1);
+		//printf("download retry. range: %s\n", range);
+		curl_easy_setopt(metadata->native.curl, CURLOPT_RANGE, range);
+		retry_times++;
+		goto afutil_download_retry;
+	}
+	curl_easy_cleanup(metadata->native.curl);
+	if (metadata->file != nullptr) afutil_download_native_flushbuffer(metadata);
+	if (metadata->file != nullptr) fclose(metadata->file);
+	metadata->native.attribute.exit = true;
+	return !(metadata->native.attribute.fail || metadata->native.attribute.retry);
 }
 
-afutil_bool afutil_download_file_multibyte(const char* url, const char* path, afutil_download_callback_t callback, void* user_data)
+afutil_bool afutil_download_file(const char* url, const char* path, afutil_download_callback callback, void* user_data)
 {
-	afutil_dlstruct dlstruct = { 0 };
-	dlstruct.file = fopen(path, "wb");
-	if (dlstruct.file == nullptr) return 0;
-	dlstruct.callback = callback;
-	dlstruct.user_data = user_data;
-	dlstruct.error = false;
-	dlstruct.buffer = new char[DEFAULT_BUFFER_SIZE];
-	dlstruct.bufsize = DEFAULT_BUFFER_SIZE;
-	int ret = download(url, &dlstruct);
-	flushbuffer(&dlstruct);
-	delete[] dlstruct.buffer;
-	fclose(dlstruct.file);
+	FILE* fp = fopen(path, "wb");
+	if (fp == nullptr) return 0;
+	afutil_download_metadata* metadata = new afutil_download_metadata;
+	memset(metadata, 0, sizeof(afutil_download_metadata));
+	if (strlen(url) >= AFUTIL_DOWNLOAD_URL_DEFAULT_LENGTH) {
+		metadata->extended_url = new char[strlen(url) + 1];
+		strcpy(metadata->extended_url, url);
+		metadata->extended_url[strlen(url)] = 0;
+	}
+	else {
+		strcpy(metadata->url, url);
+		metadata->url[strlen(url)] = 0;
+	}
+	metadata->file = fp;
+	metadata->buffer = new char[DOWNLOAD_BUFFER_SIZE];
+	metadata->buflen = DOWNLOAD_BUFFER_SIZE;
+	metadata->callback = callback;
+	metadata->user_data = user_data;
+	afutil_bool ret = afutil_download(metadata);
+	if (metadata->extended_url != nullptr) delete[] metadata->extended_url;
+	delete metadata;
 	return ret;
 }
 
-afutil_bool afutil_download_file_wide(const wchar_t* url, const wchar_t* path, afutil_download_callback_t callback, void* user_data)
+afutil_bool afutil_download_api(const char* url, void* buffer, uint64_t buflen, uint64_t* downloaded)
 {
-	int urlsize = afutil_convert_string_to_utf8(url, nullptr, 0);
-	int pathsize = afutil_convert_string_to_utf8(path, nullptr, 0);
-	char* _url = new char[urlsize];
-	char* _path = new char[pathsize];
-	memset(_url, 0, urlsize);
-	memset(_path, 0, pathsize);
-	afutil_convert_string_to_utf8(url, _url, urlsize);
-	afutil_convert_string_to_utf8(path, _path, pathsize);
-	int ret = afutil_download_file_multibyte(_url, _path, callback);
-	delete[] _url;
-	delete[] _path;
+	afutil_download_metadata* metadata = new afutil_download_metadata;
+	memset(metadata, 0, sizeof(afutil_download_metadata));
+	if (strlen(url) >= AFUTIL_DOWNLOAD_URL_DEFAULT_LENGTH) {
+		metadata->extended_url = new char[strlen(url) + 1];
+		strcpy(metadata->extended_url, url);
+		metadata->extended_url[strlen(url)] = 0;
+	}
+	else {
+		strcpy(metadata->url, url);
+		metadata->url[strlen(url)] = 0;
+	}
+	metadata->buffer = (char*)buffer;
+	metadata->buflen = buflen;
+	afutil_bool ret = afutil_download(metadata);
+	if (downloaded != nullptr) *downloaded = metadata->native.cached;
+	if (metadata->extended_url != nullptr) delete[] metadata->extended_url;
+	delete metadata;
 	return ret;
-}
-
-afutil_bool afutil_download_api_multibyte(const char* url, void* buffer, size_t bufsize, size_t* download_size)
-{
-	afutil_dlstruct dlstruct = { 0 };
-	dlstruct.error = false;
-	dlstruct.buffer = (char*)buffer;
-	dlstruct.bufsize = bufsize;
-	int ret = download(url, &dlstruct);
-	if (download_size != nullptr) *download_size = dlstruct.bufcache;
-	return ret;
-}
-
-afutil_bool afutil_download_api_wide(const wchar_t* url, void* buffer, size_t bufsize, size_t* download_size)
-{
-	int urlsize = afutil_convert_string_to_utf8(url, nullptr, 0);
-	char* _url = new char[urlsize];
-	memset(_url, 0, urlsize);
-	afutil_convert_string_to_utf8(url, _url, urlsize);
-	int ret = afutil_download_api_multibyte(_url, buffer, bufsize, download_size);
-	delete[] _url;
-	return ret;
-}
-
-static std::string urlname(std::string url)
-{
-	return url.substr(url.find_last_of('/') + 1);
-}
-
-static std::wstring urlname(std::wstring url)
-{
-	return url.substr(url.find_last_of('/') + 1);
-}
-
-size_t afutil_url_get_filename_multibyte(const char* url, char* buffer, size_t bufsize)
-{
-	std::string temp = urlname(url);
-	if (bufsize <= temp.size()) return temp.size() + 1;
-	strcpy(buffer, temp.c_str());
-	buffer[temp.size()] = 0;
-	return temp.size() + 1;
-}
-
-size_t afutil_url_get_filename_wide(const wchar_t* url, wchar_t* buffer, size_t bufsize)
-{
-	std::wstring temp = urlname(url);
-	if (bufsize <= temp.size()) return temp.size() + 1;
-	wcscpy(buffer, temp.c_str());
-	buffer[temp.size()] = 0;
-	return temp.size() + 1;
 }
