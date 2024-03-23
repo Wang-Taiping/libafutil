@@ -44,8 +44,10 @@ static bool afutil_native_path_rename_multibyte(fs::path old_path, fs::path new_
 		}
 	}
 	else if (fs::is_directory(old_path, ec)) {
-		if (!fs::exists(new_path, ec))
-			fs::create_directories(new_path);
+		if (!fs::exists(new_path, ec)) {
+			fs::rename(old_path, new_path, ec);
+			return !bool(ec);
+		}
 		if (fs::is_regular_file(new_path, ec)) {
 			afutil_rcs rcs = callback(old_path.string().c_str(), new_path.string().c_str());
 			switch (rcs)
@@ -99,8 +101,10 @@ static bool afutil_native_path_rename_wide(fs::path old_path, fs::path new_path,
 		}
 	}
 	else if (fs::is_directory(old_path, ec)) {
-		if (!fs::exists(new_path, ec))
-			fs::create_directories(new_path);
+		if (!fs::exists(new_path, ec)) {
+			fs::rename(old_path, new_path, ec);
+			return !bool(ec);
+		}
 		if (fs::is_regular_file(new_path, ec)) {
 			afutil_rcs rcs = callback(old_path.wstring().c_str(), new_path.wstring().c_str());
 			switch (rcs)
