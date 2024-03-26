@@ -9,6 +9,8 @@
 
 #define DOWNLOAD_BUFFER_SIZE	(10485760)
 
+static afutil_timer_handle dltimer;
+
 static bool init = false;
 
 static bool afutil_download_native_getproxy(char* buffer, uint32_t buflen)
@@ -26,7 +28,7 @@ afutil_bool afutil_download_init()
 {
 	if (init) return 0;
 	init = true;
-	afutil_timer_init();
+	dltimer = afutil_timer_create();
 	curl_global_init(CURL_GLOBAL_ALL);
 	return 1;
 }
@@ -35,7 +37,7 @@ afutil_bool afutil_download_uninit()
 {
 	if (!init) return 0;
 	init = false;
-	afutil_timer_uninit();
+	afutil_timer_destroy(dltimer);
 	curl_global_cleanup();
 	return 1;
 }
@@ -119,7 +121,7 @@ afutil_bool afutil_download(afutil_download_metadata* metadata)
 	if (!init) return 0;
 	metadata->native.timer.loops = uint32_t(-1);
 	metadata->native.timer.wait_sec = 1u;
-	afutil_timer_register(&metadata->native.timer);
+	afutil_timer_register(dltimer, &metadata->native.timer);
 	metadata->native.curl = curl_easy_init();
 	if (metadata->extended_url != nullptr) curl_easy_setopt(metadata->native.curl, CURLOPT_URL, metadata->extended_url);
 	else curl_easy_setopt(metadata->native.curl, CURLOPT_URL, metadata->url);
@@ -155,6 +157,7 @@ afutil_download_retry:
 	if (metadata->file != nullptr) afutil_download_native_flushbuffer(metadata);
 	if (metadata->file != nullptr) fclose(metadata->file);
 	metadata->native.attribute.exit = true;
+	afutil_timer_unregister(dltimer, &metadata->native.timer);
 	return !(metadata->native.attribute.fail || metadata->native.attribute.retry);
 }
 
